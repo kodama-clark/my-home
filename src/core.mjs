@@ -1,4 +1,4 @@
-export const VERSION = '4.0.3';
+export const VERSION = '4.1.0';
 export const CACHE_KEY = 'my-home-state-v4';
 export const TOKEN_KEY = 'home-read-token';
 export const API = 'https://api.github.com/repos/kodama-clark/my-home-ranking/contents/data/listings.json';
@@ -92,6 +92,18 @@ export class GitHubStore{
  constructor(token,fetcher=(...args)=>globalThis.fetch(...args)){this.token=token;this.fetcher=fetcher;}
  async request(method,body){const r=await this.fetcher(API+(method==='GET'?'?ref=main&t='+Date.now():''),{method,headers:{Authorization:'Bearer '+this.token,Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28',...(body?{'Content-Type':'application/json'}:{})},cache:'no-store',...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(25000)});if(!r.ok)throw httpError(r.status);return r.json();}
  async read(){const file=await this.request('GET');return {data:parseData(JSON.parse(base64Decode(file.content))),sha:file.sha};}
+ async verifyWrite(){
+  const probe=globalThis.crypto.randomUUID();
+  for(let attempt=0;attempt<3;attempt++){
+   const {data,sha}=await this.read();
+   const next={...data,connectionProbe:{id:probe,checkedAt:now(),version:VERSION}};
+   try{await this.request('PUT',{message:'Verify app read/write connection',branch:'main',sha,content:base64Encode(JSON.stringify(next,null,2)+'\n')});}
+   catch(e){if(e.status===409&&attempt<2)continue;throw e;}
+   const confirmed=await this.read();
+   if(confirmed.data.connectionProbe?.id!==probe)throw Error('保存後の再読込で確認できませんでした。物件情報は削除していません。');
+   return confirmed.data;
+  }
+ }
  async write(pending){for(let attempt=0;attempt<3;attempt++){
   const {data,sha}=await this.read(),next=mergePending(data,pending);
   try{await this.request('PUT',{message:'Save home edits from app',branch:'main',sha,content:base64Encode(JSON.stringify(next,null,2)+'\n')});return next;}
