@@ -1,4 +1,4 @@
-export const VERSION = '4.0.1';
+export const VERSION = '4.0.2';
 export const CACHE_KEY = 'my-home-state-v4';
 export const TOKEN_KEY = 'home-read-token';
 export const API = 'https://api.github.com/repos/kodama-clark/my-home-ranking/contents/data/listings.json';
@@ -26,7 +26,7 @@ export function points(h){
  const p=number(h.price),w=number(h.walk),r=parseInt(h.rooms,10);
  const detail=[['価格',20,p==null?null:p<=3500?20:p<=3800?18:p<=4000?15:p<=4200?11:p<=4500?6:p<=5000?2:0],['交通',15,w==null?null:w<=7?15:w<=10?13:w<=15?10:w<=20?4:0],['ハザード',20,({safe:20,minor:12,medium:4,high:0})[h.hazard]??null],['坂道',10,({flat:10,gentle:7,steep:2,stairs:0})[h.slope]??null],['子育て',15,({good:15,ok:9,bad:2})[h.child]??null],['買い物',10,({good:10,ok:6,bad:1})[h.shops]??null],['建物',5,!Number.isFinite(r)||!h.building?null:(r>=4?3:r>=3?2:0)+(h.building==='新築2階建て'?2:h.building==='新築3階建て'?1:0)],['資産価値',5,({good:5,ok:3,bad:0})[h.asset]??null]];
  const max=detail.reduce((s,x)=>s+(x[2]===null?0:x[1]),0),earned=detail.reduce((s,x)=>s+(x[2]??0),0);
- return {total:max?Math.round(earned/max*100):null,max,earned,detail};
+ return {total:max?Math.round(earned/100*100):null,max,earned,detail};
 }
 export function isLeasehold(h){return ['leasehold','fixed_term_leasehold'].includes(h.landTenure)||h.landTenure==='借地権';}
 export function inHistory(h){return h.archived===true||['sold','withdrawn','group'].includes(h.listingStatus)||isLeasehold(h);}
