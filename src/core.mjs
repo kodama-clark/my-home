@@ -1,4 +1,4 @@
-export const VERSION = '4.0.0';
+export const VERSION = '4.0.1';
 export const CACHE_KEY = 'my-home-state-v4';
 export const TOKEN_KEY = 'home-read-token';
 export const API = 'https://api.github.com/repos/kodama-clark/my-home-ranking/contents/data/listings.json';
@@ -89,7 +89,7 @@ export function base64Encode(text){const bytes=new TextEncoder().encode(text);le
 export function base64Decode(s){return new TextDecoder().decode(Uint8Array.from(atob(s.replace(/\s/g,'')),c=>c.charCodeAt(0)));}
 export function httpError(status){return Object.assign(Error(status===401?'認証期限切れです。設定からトークンを更新してください。':status===403?'GitHubが操作を拒否しました。書き込み権限またはAPIの利用上限を確認してください。':status===404?'保存先が見つかりません。トークンの対象リポジトリを確認してください。':`通信エラー（HTTP ${status}）`),{status});}
 export class GitHubStore{
- constructor(token,fetcher=fetch){this.token=token;this.fetcher=fetcher;}
+ constructor(token,fetcher=(...args)=>globalThis.fetch(...args)){this.token=token;this.fetcher=fetcher;}
  async request(method,body){const r=await this.fetcher(API+(method==='GET'?'?ref=main&t='+Date.now():''),{method,headers:{Authorization:'Bearer '+this.token,Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28',...(body?{'Content-Type':'application/json'}:{})},cache:'no-store',...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(25000)});if(!r.ok)throw httpError(r.status);return r.json();}
  async read(){const file=await this.request('GET');return {data:parseData(JSON.parse(base64Decode(file.content))),sha:file.sha};}
  async write(pending){for(let attempt=0;attempt<3;attempt++){

@@ -14,3 +14,20 @@ test('未知の徒歩やURLなしの物件を初期画面で表示',()=>{const l
 test('未調査は分母から除外、3SLDKを3室として計算',()=>{const h={price:'4280',walk:'14',rooms:'3SLDK',building:'新築2階建て'};assert.equal(points(h).max,40);assert.equal(points(h).earned,20);assert.equal(points(h).total,50);assert.equal(points({}).total,null);assert.equal(points({...h,hazard:'high'}).max,60);});
 test('日本語の保存往復、危険なURLを拒否',()=>{const s='住宅・内見メモ🏠';assert.equal(base64Decode(base64Encode(s)),s);assert.equal(validUrl('javascript:alert(1)'), '');assert.throws(()=>parseData({homes:[{id:'x',name:'家'},{id:'x',name:'重複'}]}));});
 test('実データの全レコードを欠損なく処理',{skip:!existsSync('../my-home-ranking/data/listings.json')},()=>{const d=parseData(JSON.parse(readFileSync('../my-home-ranking/data/listings.json','utf8')));assert.ok(d.homes.length>=22);for(const h of d.homes){assert.ok(points(h).total===null||Number.isFinite(points(h).total));}assert.equal(receive(emptyState(),d).homes.length,d.homes.length);});
+
+test('ブラウザのfetchをWindow自身のメソッドとして呼び、GETとPUTを実行',async(t)=>{
+ const calls=[];
+ t.mock.method(globalThis,'fetch',function(url,options){
+  assert.equal(this,globalThis,'Window.fetch must receive its own global object');
+  calls.push(options.method);
+  if(options.method==='GET')return Promise.resolve({ok:true,json:async()=>({sha:'test-sha',content:base64Encode(JSON.stringify(remote()))})});
+  return Promise.resolve({ok:true,json:async()=>({content:{sha:'saved'}})});
+ });
+ const store=new GitHubStore('test-token');
+ const result=await store.read();
+ assert.equal(result.data.homes.length,1);
+ const state=enqueue(receive(emptyState(),result.data),'a',{userMemo:'保存確認'});
+ const saved=await store.write(state.pending);
+ assert.equal(saved.homes[0].userMemo,'保存確認');
+ assert.deepEqual(calls,['GET','GET','PUT']);
+});
