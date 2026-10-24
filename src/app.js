@@ -64,19 +64,31 @@ function showPrivate(){$('loginGate').classList.add('hidden');$('privateApp').cl
 function logout(){localStorage.removeItem(TOKEN_KEY);$('privateApp').classList.add('hidden');$('loginGate').classList.remove('hidden');$('loginError').textContent='ログアウトしました。未送信の編集はこの端末に残っています。';}
 function render(){
  renderStatus();document.querySelectorAll('[data-nav]').forEach(b=>b.setAttribute('aria-current',b.dataset.nav===(page==='detail'||page==='edit'?listMode:page)?'page':'false'));
- const el=$('content');if(page==='detail')el.innerHTML=renderDetail(findHome(selected));else if(page==='edit')el.innerHTML=renderForm(findHome(selected));else if(page==='compare')el.innerHTML=renderCompare();else if(page==='settings')el.innerHTML=renderSettings();else el.innerHTML=renderList();
+ const el=$('content');if(['rank','new','favorites','history'].includes(page)&&$('listResults')&&document.activeElement===$('search')){refreshListResults();return;}if(page==='detail')el.innerHTML=renderDetail(findHome(selected));else if(page==='edit')el.innerHTML=renderForm(findHome(selected));else if(page==='compare')el.innerHTML=renderCompare();else if(page==='settings')el.innerHTML=renderSettings();else el.innerHTML=renderList();
  if(page==='edit')bindForm();
 }
-function renderList(){
+function listMatches(){
  const view=listMode==='new'?'rank':listMode,sort=listMode==='new'?'new':filters.sort;
  const arr=filterHomes(state.homes,{...filters,view,sort});const pages=Math.max(1,Math.ceil(arr.length/PAGE_SIZE));pageNumber=Math.min(pageNumber,pages);
+ return {arr,pages};
+}
+function renderListResults(arr,pages){
+ return `<div class="cards">${arr.slice((pageNumber-1)*PAGE_SIZE,pageNumber*PAGE_SIZE).map(h=>card(h)).join('')}</div>${!arr.length?'<div class="empty">該当する物件はありません。<br>絞り込みを解除するか、物件を登録してください。</div>':''}
+ <div class="actions pagination">${pageNumber>1?button('prev','前へ'):''}<span class="muted">${pageNumber} / ${pages}ページ</span>${pageNumber<pages?button('next','次へ'):''}</div>`;
+}
+function refreshListResults(){
+ const results=$('listResults');if(!results)return;
+ const {arr,pages}=listMatches();results.innerHTML=renderListResults(arr,pages);
+ const count=$('resultCount');if(count)count.textContent=`表示 ${arr.length}件 / 全登録 ${state.homes.length}件。借地権・成約済みは候補から除外し、履歴に保存。`;
+}
+function renderList(){
+ const {arr,pages}=listMatches();
  const candidates=state.homes.filter(h=>!inHistory(h)).length;
  const title={rank:'物件ランキング',new:'新しく登録した物件',favorites:'お気に入り',history:'成約・見送り・元資料'}[listMode]||'物件一覧';
  return `<div class="stats"><div class="stat"><b>${state.homes.length}</b><span>全登録物件</span></div><div class="stat"><b>${candidates}</b><span>検討候補</span></div><div class="stat"><b>${state.homes.filter(h=>h.favorite&&!inHistory(h)).length}</b><span>お気に入り</span></div></div>
  <div class="row viewtitle"><h2>${title}</h2>${button('add','＋ 物件登録','','')}</div>
- <div class="panel"><label class="tiny" for="search">駅・住所・物件名で探す</label><input id="search" class="search" type="search" placeholder="例：柿生・町田・高根" value="${esc(filters.q)}"><details id="filterDetails"><summary>絞り込み・並び順 ${filters.budget||filters.walk||filters.rooms?'（指定あり）':''}</summary><div class="filter-grid">${filterSelect('budget','価格上限',[['','指定なし'],['4000','4,000万円'],['4500','4,500万円'],['5000','5,000万円']])}${filterSelect('walk','駅徒歩',[['','指定なし'],['10','10分以内'],['15','15分以内']])}${filterSelect('rooms','間取り',[['','指定なし'],['3','3LDK以上'],['4','4LDK以上']])}</div><label class="check"><input type="checkbox" id="includeUnknown" ${filters.unknown?'checked':''}>未確認項目がある物件も表示</label><label class="field">並び順<select id="sortSelect">${options([['score','暫定点順'],['new','新着順'],['price','価格が安い順'],['coverage','調査が進んだ順']],sort)}</select></label><div class="actions">${button('clear-filter','絞り込み解除')}${button('history','成約・見送り・元資料を表示')}</div></details><p class="tiny">表示 ${arr.length}件 / 全登録 ${state.homes.length}件。借地権・成約済みは候補から除外し、履歴に保存。</p></div>
- <div class="cards">${arr.slice((pageNumber-1)*PAGE_SIZE,pageNumber*PAGE_SIZE).map(h=>card(h)).join('')}</div>${!arr.length?'<div class="empty">該当する物件はありません。<br>絞り込みを解除するか、物件を登録してください。</div>':''}
- <div class="actions pagination">${pageNumber>1?button('prev','前へ'):''}<span class="muted">${pageNumber} / ${pages}ページ</span>${pageNumber<pages?button('next','次へ'):''}</div>
+ <div class="panel"><label class="tiny" for="search">駅・住所・物件名で探す</label><input id="search" class="search" type="text" inputmode="text" autocomplete="off" placeholder="例：柿生・町田・高根" value="${esc(filters.q)}"><details id="filterDetails"><summary>絞り込み・並び順 ${filters.budget||filters.walk||filters.rooms?'（指定あり）':''}</summary><div class="filter-grid">${filterSelect('budget','価格上限',[['','指定なし'],['4000','4,000万円'],['4500','4,500万円'],['5000','5,000万円']])}${filterSelect('walk','駅徒歩',[['','指定なし'],['10','10分以内'],['15','15分以内']])}${filterSelect('rooms','間取り',[['','指定なし'],['3','3LDK以上'],['4','4LDK以上']])}</div><label class="check"><input type="checkbox" id="includeUnknown" ${filters.unknown?'checked':''}>未確認項目がある物件も表示</label><label class="field">並び順<select id="sortSelect">${options([['score','暫定点順'],['new','新着順'],['price','価格が安い順'],['coverage','調査が進んだ順']],sort)}</select></label><div class="actions">${button('clear-filter','絞り込み解除')}${button('history','成約・見送り・元資料を表示')}</div></details><p class="tiny" id="resultCount">表示 ${arr.length}件 / 全登録 ${state.homes.length}件。借地権・成約済みは候補から除外し、履歴に保存。</p></div>
+ <div id="listResults">${renderListResults(arr,pages)}</div>
  <p class="tiny">点数は従来の100点基準を継続。未確認項目は採点対象外です。総予算5,000万円には諸費用も含めて確認してください。</p>`;
 }
 function options(items,current){return items.map(([v,t])=>`<option value="${esc(v)}" ${String(v)===String(current)?'selected':''}>${esc(t)}</option>`).join('');}
@@ -136,7 +148,10 @@ async function importData(file){if(!file)return;try{if(file.size>10000000)throw 
 document.addEventListener('click',e=>{const nav=e.target.closest('[data-nav]');if(nav){if(page==='edit'&&!confirm('編集中の入力を閉じますか？'))return;go(nav.dataset.nav);return;}const b=e.target.closest('[data-action]');if(!b)return;const a=b.dataset.action,id=b.dataset.id,h=findHome(id);try{
  if(a==='detail')go('detail',id);else if(a==='edit')go('edit',id);else if(a==='add')go('edit');else if(a==='back')go(listMode);else if(a==='cancel-edit')go(selected?'detail':listMode,selected);else if(a==='history')go('history');else if(a==='favorite'&&h){queuePatch(id,{favorite:!h.favorite});render();sync();}else if(a==='compare-toggle'){if(comparison.has(id))comparison.delete(id);else if(comparison.size<3)comparison.add(id);else{notify('比較は3件までです。比較画面から物件を外してください。');return;}render();notify(`比較 ${comparison.size}/3件`);}else if(a==='compare-clear'){comparison.clear();render();}else if(a==='archive'&&h){queuePatch(id,{archived:!h.archived});go('detail',id);sync();}else if(a==='prev'||a==='next'){pageNumber+=a==='next'?1:-1;render();window.scrollTo(0,0);}else if(a==='clear-filter'){Object.assign(filters,{q:'',budget:'',walk:'',rooms:'',unknown:true,sort:'score'});pageNumber=1;render();}else if(a==='sync')sync();else if(a==='export')exportData();else if(a==='import')$('importFile').click();else if(a==='logout')logout();else if(a==='resolve-local'||a==='resolve-remote')resolve(id,a==='resolve-local');else if(a==='clear-device'){if(Object.keys(state.pending).length){notify('未送信の編集があります。先に同期するかバックアップを保存してください。');return;}if(confirm('この端末のログイン情報と保存データを削除します。GitHubの物件データは残ります。よろしいですか？')){[CACHE_KEY,TOKEN_KEY,'my-home-personal-notes-v1','my-home-favorites-v1','my-home-visit-checks-v1'].forEach(k=>localStorage.removeItem(k));sessionStorage.removeItem('my-home-ranking-private-session-v2');state=emptyState();logout();}}else if(a==='install'&&installPrompt){installPrompt.prompt();installPrompt=null;}
  }catch(err){notify(err.message);}});
-document.addEventListener('input',e=>{if(e.target.id==='search'){const input=e.target,position=input.selectionStart;filters.q=input.value;pageNumber=1;clearTimeout(renderList.timer);renderList.timer=setTimeout(()=>{render();$('search')?.focus();try{$('search')?.setSelectionRange(position,position);}catch{}},180);}});
+let searchComposing=false;
+document.addEventListener('compositionstart',e=>{if(e.target.id==='search')searchComposing=true;});
+document.addEventListener('compositionend',e=>{if(e.target.id==='search'){searchComposing=false;filters.q=e.target.value;pageNumber=1;refreshListResults();}});
+document.addEventListener('input',e=>{if(e.target.id==='search'&&!searchComposing&&!e.isComposing){filters.q=e.target.value;pageNumber=1;refreshListResults();}});
 document.addEventListener('change',e=>{const t=e.target;if(t.dataset.filter){filters[t.dataset.filter]=t.value;pageNumber=1;render();$('filterDetails').open=true;}else if(t.id==='includeUnknown'||t.id==='sortSelect'){if(t.id==='includeUnknown')filters.unknown=t.checked;else{filters.sort=t.value;if(listMode==='new')listMode='rank';}pageNumber=1;render();$('filterDetails').open=true;}else if(t.dataset.visit!==undefined){const h=findHome(t.dataset.id);if(h){try{queuePatch(h.id,{visitChecks:{...(h.visitChecks||{}),[t.dataset.visit]:t.checked}});sync();}catch(e){notify(e.message);t.checked=!t.checked;}}}else if(t.id==='importFile')importData(t.files[0]);});
 document.addEventListener('submit',e=>{if(e.target.id==='loginForm'||e.target.id==='tokenForm')login(e);});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&page!=='edit')sync();});
