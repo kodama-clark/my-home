@@ -1,4 +1,4 @@
-export const VERSION = '4.1.0';
+export const VERSION = '4.1.2';
 export const CACHE_KEY = 'my-home-state-v4';
 export const TOKEN_KEY = 'home-read-token';
 export const API = 'https://api.github.com/repos/kodama-clark/my-home-ranking/contents/data/listings.json';
