@@ -82,7 +82,7 @@ function refreshListResults(){
  const count=$('resultCount');if(count)count.textContent=`表示 ${arr.length}件 / 全登録 ${state.homes.length}件。借地権・成約済みは候補から除外し、履歴に保存。`;
 }
 function renderList(){
- const {arr,pages}=listMatches();
+ const {arr,pages}=listMatches(),sort=listMode==='new'?'new':filters.sort;
  const candidates=state.homes.filter(h=>!inHistory(h)).length;
  const title={rank:'物件ランキング',new:'新しく登録した物件',favorites:'お気に入り',history:'成約・見送り・元資料'}[listMode]||'物件一覧';
  return `<div class="stats"><div class="stat"><b>${state.homes.length}</b><span>全登録物件</span></div><div class="stat"><b>${candidates}</b><span>検討候補</span></div><div class="stat"><b>${state.homes.filter(h=>h.favorite&&!inHistory(h)).length}</b><span>お気に入り</span></div></div>
