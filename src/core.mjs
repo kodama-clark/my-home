@@ -1,4 +1,4 @@
-export const VERSION = '4.1.2';
+export const VERSION = '4.1.3';
 export const CACHE_KEY = 'my-home-state-v4';
 export const TOKEN_KEY = 'home-read-token';
 export const API = 'https://api.github.com/repos/kodama-clark/my-home-ranking/contents/data/listings.json';
@@ -23,8 +23,8 @@ export function parseData(raw){
 }
 export function emptyState(){return {schema:4,homes:[],pending:{},meta:{},lastSync:'',migrationComplete:false};}
 export function points(h){
- const p=number(h.price),w=number(h.walk),r=parseInt(h.rooms,10);
- const detail=[['価格',20,p==null?null:p<=3500?20:p<=3800?18:p<=4000?15:p<=4200?11:p<=4500?6:p<=5000?2:0],['交通',15,w==null?null:w<=7?15:w<=10?13:w<=15?10:w<=20?4:0],['ハザード',20,({safe:20,minor:12,medium:4,high:0})[h.hazard]??null],['坂道',10,({flat:10,gentle:7,steep:2,stairs:0})[h.slope]??null],['子育て',15,({good:15,ok:9,bad:2})[h.child]??null],['買い物',10,({good:10,ok:6,bad:1})[h.shops]??null],['建物',5,!Number.isFinite(r)||!h.building?null:(r>=4?3:r>=3?2:0)+(h.building==='新築2階建て'?2:h.building==='新築3階建て'?1:0)],['資産価値',5,({good:5,ok:3,bad:0})[h.asset]??null]];
+ const price=number(h.price),fees=number(h.fees),p=price==null?null:price+(fees??0),w=number(h.walk),r=parseInt(h.rooms,10);
+ const detail=[['価格',20,p==null?null:p<=3500?20:p<=3800?18:p<=4000?15:p<=4200?11:p<=4500?6:0],['交通',15,w==null?null:w<=7?15:w<=10?13:w<=15?10:w<=20?4:0],['ハザード',20,({safe:20,minor:12,medium:4,high:0})[h.hazard]??null],['坂道',10,({flat:10,gentle:7,steep:2,stairs:0})[h.slope]??null],['子育て',15,({good:15,ok:9,bad:2})[h.child]??null],['買い物',10,({good:10,ok:6,bad:1})[h.shops]??null],['建物',5,!Number.isFinite(r)||!h.building?null:(r>=4?3:r>=3?2:0)+(h.building==='新築2階建て'?2:h.building==='新築3階建て'?1:0)],['資産価値',5,({good:5,ok:3,bad:0})[h.asset]??null]];
  const max=detail.reduce((s,x)=>s+(x[2]===null?0:x[1]),0),earned=detail.reduce((s,x)=>s+(x[2]??0),0);
  return {total:max?Math.round(earned/max*100):null,max,earned,detail};
 }
@@ -32,11 +32,12 @@ export function isLeasehold(h){return ['leasehold','fixed_term_leasehold'].inclu
 export function inHistory(h){return h.archived===true||['sold','withdrawn','group'].includes(h.listingStatus)||isLeasehold(h);}
 export function tenure(h){return ({ownership:'所有権',leasehold:'借地権',fixed_term_leasehold:'定期借地権'})[h.landTenure]||'権利未確認';}
 export function statusLabel(h){return h.archived?'見送り':({sold:'成約済み',withdrawn:'掲載終了',group:'分譲地の元資料',listed:'掲載確認済み',unverified:'販売状況未確認'})[h.listingStatus]||'販売状況未確認';}
-export function requirementNotes(h){const out=[];if(number(h.price)>5000)out.push('物件価格が予算上限を超過');if(number(h.walk)>15)out.push('駅徒歩15分を超過');if(h.rooms&&parseInt(h.rooms,10)<3)out.push('居室3室未満（納戸は別）');if(h.building==='新築3階建て')out.push('3階建て');if(h.landTenure!=='ownership')out.push(tenure(h));if(number(h.price)!=null&&number(h.fees)==null)out.push('諸費用未確認');return out;}
+export function requirementNotes(h){const out=[],p=number(h.price),fees=number(h.fees),walk=number(h.walk);if(p==null)out.push('物件価格未確認');else if(p>4500)out.push('物件価格が総予算4,500万円を超過');else if(fees!=null&&p+fees>4500)out.push('諸費用込みで総予算4,500万円を超過');else if(fees==null)out.push('諸費用未確認（総予算内か未判定）');if(walk>20)out.push('駅徒歩20分を超過');if(h.rooms&&parseInt(h.rooms,10)<3)out.push('居室3室未満（納戸は別）');if(h.landTenure!=='ownership')out.push(tenure(h));return out;}
 export function canonicalUrl(s){const v=validUrl(s);if(!v)return '';const u=new URL(v);u.hash='';for(const k of [...u.searchParams.keys()])if(/^(utm_|fbclid|gclid)/.test(k))u.searchParams.delete(k);return u.href.replace(/\/$/,'');}
 export function filterHomes(homes,f={}){
  return homes.filter(h=>f.view==='history'?inHistory(h):!inHistory(h)).filter(h=>f.view!=='favorites'||h.favorite).filter(h=>!f.q||[h.name,h.address,h.station,h.memo,h.userMemo].some(v=>String(v||'').toLowerCase().includes(f.q.toLowerCase()))).filter(h=>{
-  for(const [key,limit]of [['price',f.budget],['walk',f.walk]])if(limit){const n=number(h[key]);if(n==null?!f.unknown:n>Number(limit))return false;}
+  if(f.budget){const p=number(h.price),fees=number(h.fees),limit=Number(f.budget);if(p==null){if(!f.unknown)return false;}else if(p>limit||(fees!=null&&p+fees>limit)||fees==null&&!f.unknown)return false;}
+  if(f.walk){const walk=number(h.walk);if(walk==null?!f.unknown:walk>Number(f.walk))return false;}
   if(f.rooms){const n=parseInt(h.rooms,10);if(!n?!f.unknown:n<Number(f.rooms))return false;}return true;
  }).sort((a,b)=>f.sort==='new'?String(b.created||'').localeCompare(String(a.created||'')):f.sort==='price'?(number(a.price)??Infinity)-(number(b.price)??Infinity):f.sort==='coverage'?points(b).max-points(a).max:(points(b).total??-1)-(points(a).total??-1)||points(b).max-points(a).max);
 }
