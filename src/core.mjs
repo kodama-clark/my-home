@@ -1,4 +1,4 @@
-export const VERSION = '4.1.3';
+export const VERSION = '4.1.4';
 export const CACHE_KEY = 'my-home-state-v4';
 export const TOKEN_KEY = 'home-read-token';
 export const API = 'https://api.github.com/repos/kodama-clark/my-home-ranking/contents/data/listings.json';
@@ -32,14 +32,17 @@ export function isLeasehold(h){return ['leasehold','fixed_term_leasehold'].inclu
 export function inHistory(h){return h.archived===true||['sold','withdrawn','group'].includes(h.listingStatus)||isLeasehold(h);}
 export function tenure(h){return ({ownership:'所有権',leasehold:'借地権',fixed_term_leasehold:'定期借地権'})[h.landTenure]||'権利未確認';}
 export function statusLabel(h){return h.archived?'見送り':({sold:'成約済み',withdrawn:'掲載終了',group:'分譲地の元資料',listed:'掲載確認済み',unverified:'販売状況未確認'})[h.listingStatus]||'販売状況未確認';}
-export function requirementNotes(h){const out=[],p=number(h.price),fees=number(h.fees),walk=number(h.walk);if(p==null)out.push('物件価格未確認');else if(p>4500)out.push('物件価格が総予算4,500万円を超過');else if(fees!=null&&p+fees>4500)out.push('諸費用込みで総予算4,500万円を超過');else if(fees==null)out.push('諸費用未確認（総予算内か未判定）');if(walk>20)out.push('駅徒歩20分を超過');if(h.rooms&&parseInt(h.rooms,10)<3)out.push('居室3室未満（納戸は別）');if(h.landTenure!=='ownership')out.push(tenure(h));return out;}
+export function livingFloorLabel(h){return ({'1':'1階LDK','2':'2階LDK','3':'3階以上LDK'})[String(h.livingFloor??'')]||'LDK階未確認';}
+export function requirementNotes(h){const out=[],p=number(h.price),fees=number(h.fees),walk=number(h.walk);if(p==null)out.push('物件価格未確認');else if(p>4500)out.push('物件価格が総予算4,500万円を超過');else if(fees!=null&&p+fees>4500)out.push('諸費用込みで総予算4,500万円を超過');else if(fees==null)out.push('諸費用未確認（総予算内か未判定）');if(walk>20)out.push('駅徒歩20分を超過');if(h.rooms&&parseInt(h.rooms,10)<3)out.push('居室3室未満（納戸は別）');if(h.landTenure!=='ownership')out.push(tenure(h));if(!h.livingFloor)out.push('1階LDK未確認（間取り図の確認が必要）');else if(String(h.livingFloor)!=='1')out.push('LDKが2階以上（希望条件外）');return out;}
 export function canonicalUrl(s){const v=validUrl(s);if(!v)return '';const u=new URL(v);u.hash='';for(const k of [...u.searchParams.keys()])if(/^(utm_|fbclid|gclid)/.test(k))u.searchParams.delete(k);return u.href.replace(/\/$/,'');}
 export function filterHomes(homes,f={}){
  return homes.filter(h=>f.view==='history'?inHistory(h):!inHistory(h)).filter(h=>f.view!=='favorites'||h.favorite).filter(h=>!f.q||[h.name,h.address,h.station,h.memo,h.userMemo].some(v=>String(v||'').toLowerCase().includes(f.q.toLowerCase()))).filter(h=>{
   if(f.budget){const p=number(h.price),fees=number(h.fees),limit=Number(f.budget);if(p==null){if(!f.unknown)return false;}else if(p>limit||(fees!=null&&p+fees>limit)||fees==null&&!f.unknown)return false;}
   if(f.walk){const walk=number(h.walk);if(walk==null?!f.unknown:walk>Number(f.walk))return false;}
-  if(f.rooms){const n=parseInt(h.rooms,10);if(!n?!f.unknown:n<Number(f.rooms))return false;}return true;
- }).sort((a,b)=>f.sort==='new'?String(b.created||'').localeCompare(String(a.created||'')):f.sort==='price'?(number(a.price)??Infinity)-(number(b.price)??Infinity):f.sort==='coverage'?points(b).max-points(a).max:(points(b).total??-1)-(points(a).total??-1)||points(b).max-points(a).max);
+  if(f.rooms){const n=parseInt(h.rooms,10);if(!n?!f.unknown:n<Number(f.rooms))return false;}
+  if(f.livingFloor){const floor=String(h.livingFloor??'');if(floor!==String(f.livingFloor)&&(floor!==''||!f.unknown))return false;}
+  return true;
+ }).sort((a,b)=>f.sort==='new'?String(b.created||'').localeCompare(String(a.created||'')):f.sort==='price'?(number(a.price)??Infinity)-(number(b.price)??Infinity):f.sort==='coverage'?points(b).max-points(a).max:(f.livingFloor?Number(b.livingFloor===f.livingFloor)-Number(a.livingFloor===f.livingFloor):0)||(points(b).total??-1)-(points(a).total??-1)||points(b).max-points(a).max);
 }
 export function enqueue(state,id,changes){
  const old=state.homes.find(h=>h.id===id);const patch={};
