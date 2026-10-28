@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync,existsSync} from 'node:fs';
-import {emptyState,enqueue,receive,mergePending,acknowledge,ConflictError,GitHubStore,base64Encode,base64Decode,points,filterHomes,parseData,validUrl} from '../src/core.mjs';
+import {emptyState,enqueue,receive,mergePending,acknowledge,ConflictError,GitHubStore,base64Encode,base64Decode,points,filterHomes,requirementNotes,parseData,validUrl} from '../src/core.mjs';
 import {webcrypto} from 'node:crypto';
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
 const remote=()=>({updated:'old',filters:{excludeLeasehold:true},other:{preserve:1},homes:[{id:'a',name:'既存物件',price:'4280',memo:'調査済み',hazardResearch:{officialUrl:'https://example.com'},created:'2026-10-20',privateField:'保持'}]});
@@ -51,3 +51,13 @@ test('ブラウザのfetchをWindow自身のメソッドとして呼び、GETと
  assert.deepEqual(calls,['GET','GET','PUT']);
 });
 
+
+test('新条件：諸費用込み4,500万円・徒歩20分と未確認扱い',()=>{
+ const xs=[{id:'ok',name:'予算内',price:'4300',fees:'100',walk:'20',landTenure:'ownership',rooms:'4LDK'},{id:'over',name:'諸費用超過',price:'4300',fees:'300',walk:'18',landTenure:'ownership'},{id:'unknown',name:'諸費用未確認',price:'4300',walk:'19',landTenure:'ownership'},{id:'far',name:'駅遠',price:'3900',fees:'100',walk:'21',landTenure:'ownership'},{id:'stickerOver',name:'価格超過',price:'4600',walk:'10',landTenure:'ownership'}];
+ assert.deepEqual(filterHomes(xs,{budget:'4500',walk:'20',unknown:true}).map(x=>x.id).sort(),['ok','unknown']);
+ assert.deepEqual(filterHomes(xs,{budget:'4500',walk:'20',unknown:false}).map(x=>x.id),['ok']);
+ assert.ok(requirementNotes(xs[1]).some(x=>x.includes('総予算4,500万円')));
+ assert.ok(requirementNotes(xs[2]).some(x=>x.includes('未判定')));
+ assert.ok(requirementNotes(xs[3]).some(x=>x.includes('徒歩20分')));
+ assert.ok(!requirementNotes({...xs[0],building:'新築3階建て'}).includes('3階建て'));
+});
