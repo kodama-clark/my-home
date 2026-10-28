@@ -61,3 +61,12 @@ test('新条件：諸費用込み4,500万円・徒歩20分と未確認扱い',()
  assert.ok(requirementNotes(xs[3]).some(x=>x.includes('徒歩20分')));
  assert.ok(!requirementNotes({...xs[0],building:'新築3階建て'}).includes('3階建て'));
 });
+
+test('1階LDK条件：2階は除外し、未確認は仮候補として扱う',()=>{
+ const xs=[{id:'first',name:'1階LDK',livingFloor:'1',price:'3900',walk:'15'},{id:'second',name:'2階LDK',livingFloor:'2',price:'3900',walk:'15'},{id:'unknown',name:'階数未確認',price:'3900',walk:'15'}];
+ assert.deepEqual(filterHomes(xs,{livingFloor:'1',unknown:true}).map(x=>x.id),['first','unknown']);
+ assert.deepEqual(filterHomes(xs,{livingFloor:'1',unknown:false}).map(x=>x.id),['first']);
+ assert.deepEqual(filterHomes(xs,{livingFloor:'2',unknown:false}).map(x=>x.id),['second']);
+ assert.ok(requirementNotes(xs[1]).some(x=>x.includes('2階以上')));
+ assert.ok(requirementNotes(xs[2]).some(x=>x.includes('1階LDK未確認')));
+});
