@@ -29,7 +29,7 @@ test('保存中に増えた編集を送信済みにしない',()=>{let s=enqueue
 test('送信成功時だけ未送信キューから除く',()=>{let s=enqueue(receive(emptyState(),remote()),'a',{userMemo:'メモ'});const sent=structuredClone(s.pending);s=acknowledge(s,sent,mergePending(remote(),sent));assert.deepEqual(s.pending,{});assert.equal(s.homes[0].userMemo,'メモ');});
 test('409なら最新SHAで再取得し追加情報を保全',async()=>{let reads=0,puts=0;const fetcher=async(url,opt)=>{if(opt.method==='GET'){reads++;let d=remote();if(reads===2)d.homes[0].price='4100';return {ok:true,json:async()=>({sha:'sha'+reads,content:base64Encode(JSON.stringify(d))})};}puts++;if(puts===1)return {ok:false,status:409};assert.equal(JSON.parse(opt.body).sha,'sha2');return {ok:true,json:async()=>({})};};const s=enqueue(receive(emptyState(),remote()),'a',{userMemo:'保存'});const out=await new GitHubStore('test',fetcher).write(s.pending);assert.equal(puts,2);assert.equal(out.homes[0].price,'4100');});
 test('403やオフラインを成功扱いしない',async()=>{let s=enqueue(receive(emptyState(),remote()),'a',{userMemo:'保存'});await assert.rejects(new GitHubStore('test',async(u,o)=>o.method==='GET'?{ok:true,json:async()=>({sha:'x',content:base64Encode(JSON.stringify(remote()))})}:{ok:false,status:403}).write(s.pending),/拒否/);assert.equal(Object.keys(s.pending).length,1);await assert.rejects(new GitHubStore('test',async()=>{throw Error('offline')}).write(s.pending),/offline/);});
-test('未知の徒歩やURLなしの物件を初期画面で表示',()=>{const list=[{id:'1',name:'未確認',walk:'',price:'',url:''},{id:'2',name:'対象',walk:'10',price:'4300'},{id:'3',name:'借地',landTenure:'leasehold'},{id:'4',name:'売却済',listingStatus:'sold'}];assert.deepEqual(filterHomes(list,{unknown:true}).map(h=>h.id).sort(),['1','2']);assert.equal(filterHomes(list,{walk:'15',unknown:true}).length,2);assert.equal(filterHomes(list,{walk:'15',unknown:false}).length,1);assert.equal(filterHomes(list,{view:'history'}).length,2);});
+test('未知の徒歩やURLなしの物件を初期画面で表示',()=>{const list=[{id:'1',name:'未確認',listingStatus:'listed',livingFloor:'1',walk:'',price:'',url:''},{id:'2',name:'対象',listingStatus:'listed',livingFloor:'1',walk:'10',price:'4300'},{id:'3',name:'借地',landTenure:'leasehold'},{id:'4',name:'売却済',listingStatus:'sold'}];assert.deepEqual(filterHomes(list,{unknown:true}).map(h=>h.id).sort(),['1','2']);assert.equal(filterHomes(list,{walk:'15',unknown:true}).length,2);assert.equal(filterHomes(list,{walk:'15',unknown:false}).length,1);assert.equal(filterHomes(list,{view:'history'}).length,2);});
 test('未調査は分母から除外、3SLDKを3室として計算',()=>{const h={price:'4280',walk:'14',rooms:'3SLDK',building:'新築2階建て'};assert.equal(points(h).max,40);assert.equal(points(h).earned,20);assert.equal(points(h).total,50);assert.equal(points({}).total,null);assert.equal(points({...h,hazard:'high'}).max,60);});
 test('日本語の保存往復、危険なURLを拒否',()=>{const s='住宅・内見メモ🏠';assert.equal(base64Decode(base64Encode(s)),s);assert.equal(validUrl('javascript:alert(1)'), '');assert.throws(()=>parseData({homes:[{id:'x',name:'家'},{id:'x',name:'重複'}]}));});
 test('実データの全レコードを欠損なく処理',{skip:!existsSync('../my-home-ranking/data/listings.json')},()=>{const d=parseData(JSON.parse(readFileSync('../my-home-ranking/data/listings.json','utf8')));assert.ok(d.homes.length>=22);for(const h of d.homes){assert.ok(points(h).total===null||Number.isFinite(points(h).total));}assert.equal(receive(emptyState(),d).homes.length,d.homes.length);});
@@ -54,6 +54,7 @@ test('ブラウザのfetchをWindow自身のメソッドとして呼び、GETと
 
 test('新条件：諸費用込み4,500万円・徒歩20分と未確認扱い',()=>{
  const xs=[{id:'ok',name:'予算内',price:'4300',fees:'100',walk:'20',landTenure:'ownership',rooms:'4LDK'},{id:'over',name:'諸費用超過',price:'4300',fees:'300',walk:'18',landTenure:'ownership'},{id:'unknown',name:'諸費用未確認',price:'4300',walk:'19',landTenure:'ownership'},{id:'far',name:'駅遠',price:'3900',fees:'100',walk:'21',landTenure:'ownership'},{id:'stickerOver',name:'価格超過',price:'4600',walk:'10',landTenure:'ownership'}];
+ xs.forEach(x=>Object.assign(x,{listingStatus:'listed',livingFloor:'1'}));
  assert.deepEqual(filterHomes(xs,{budget:'4500',walk:'20',unknown:true}).map(x=>x.id).sort(),['ok','unknown']);
  assert.deepEqual(filterHomes(xs,{budget:'4500',walk:'20',unknown:false}).map(x=>x.id),['ok']);
  assert.ok(requirementNotes(xs[1]).some(x=>x.includes('総予算4,500万円')));
@@ -62,11 +63,20 @@ test('新条件：諸費用込み4,500万円・徒歩20分と未確認扱い',()
  assert.ok(!requirementNotes({...xs[0],building:'新築3階建て'}).includes('3階建て'));
 });
 
-test('1階LDK条件：2階は除外し、未確認は仮候補として扱う',()=>{
+test('1階LDKと販売確認を必須とし、未確認・条件外は履歴へ保持',()=>{
  const xs=[{id:'first',name:'1階LDK',livingFloor:'1',price:'3900',walk:'15'},{id:'second',name:'2階LDK',livingFloor:'2',price:'3900',walk:'15'},{id:'unknown',name:'階数未確認',price:'3900',walk:'15'}];
- assert.deepEqual(filterHomes(xs,{livingFloor:'1',unknown:true}).map(x=>x.id),['first','unknown']);
+ xs.forEach(x=>x.listingStatus='listed');
+ assert.deepEqual(filterHomes(xs,{livingFloor:'1',unknown:true}).map(x=>x.id),['first']);
  assert.deepEqual(filterHomes(xs,{livingFloor:'1',unknown:false}).map(x=>x.id),['first']);
- assert.deepEqual(filterHomes(xs,{livingFloor:'2',unknown:false}).map(x=>x.id),['second']);
+ assert.deepEqual(filterHomes(xs,{livingFloor:'2',unknown:false}).map(x=>x.id),[]);
+ assert.deepEqual(filterHomes(xs,{view:'history',livingFloor:'1',budget:'1',walk:'1'}).map(x=>x.id),['second','unknown']);
  assert.ok(requirementNotes(xs[1]).some(x=>x.includes('2階以上')));
  assert.ok(requirementNotes(xs[2]).some(x=>x.includes('1階LDK未確認')));
+});
+
+test('大容量Contents空本文から認証付きBlobへフォールバックし、空本文は拒否',async()=>{
+ const sha='a'.repeat(40),urls=[];
+ const store=new GitHubStore('test',async(url,opt)=>{urls.push(url);assert.equal(opt.headers.Authorization,'Bearer test');return {ok:true,json:async()=>url.includes('/git/blobs/')?{content:base64Encode(JSON.stringify(remote()))}:{sha,encoding:'none',content:''}}});
+ assert.equal((await store.read()).data.homes.length,1);assert.ok(urls[1].includes('/git/blobs/'+sha));
+ const broken=new GitHubStore('test',async()=>({ok:true,json:async()=>({sha,encoding:'none',content:''})}));await assert.rejects(broken.read(),/本文/);
 });
