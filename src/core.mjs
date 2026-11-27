@@ -1,4 +1,4 @@
-export const VERSION = '4.1.4';
+export const VERSION = '4.1.7';
 export const CACHE_KEY = 'my-home-state-v4';
 export const TOKEN_KEY = 'home-read-token';
 export const API = 'https://api.github.com/repos/kodama-clark/my-home-ranking/contents/data/listings.json';
@@ -29,7 +29,7 @@ export function points(h){
  return {total:max?Math.round(earned/max*100):null,max,earned,detail};
 }
 export function isLeasehold(h){return ['leasehold','fixed_term_leasehold'].includes(h.landTenure)||h.landTenure==='借地権';}
-export function inHistory(h){return h.archived===true||['sold','withdrawn','group'].includes(h.listingStatus)||isLeasehold(h);}
+export function inHistory(h){return h.archived===true||h.listingStatus!=='listed'||String(h.livingFloor??'')!=='1'||isLeasehold(h)||/相模原市中央区上溝/.test(String(h.address||'').replace(/\s/g,''));}
 export function tenure(h){return ({ownership:'所有権',leasehold:'借地権',fixed_term_leasehold:'定期借地権'})[h.landTenure]||'権利未確認';}
 export function statusLabel(h){return h.archived?'見送り':({sold:'成約済み',withdrawn:'掲載終了',group:'分譲地の元資料',listed:'掲載確認済み',unverified:'販売状況未確認'})[h.listingStatus]||'販売状況未確認';}
 export function livingFloorLabel(h){return ({'1':'1階LDK','2':'2階LDK','3':'3階以上LDK'})[String(h.livingFloor??'')]||'LDK階未確認';}
@@ -37,6 +37,7 @@ export function requirementNotes(h){const out=[],p=number(h.price),fees=number(h
 export function canonicalUrl(s){const v=validUrl(s);if(!v)return '';const u=new URL(v);u.hash='';for(const k of [...u.searchParams.keys()])if(/^(utm_|fbclid|gclid)/.test(k))u.searchParams.delete(k);return u.href.replace(/\/$/,'');}
 export function filterHomes(homes,f={}){
  return homes.filter(h=>f.view==='history'?inHistory(h):!inHistory(h)).filter(h=>f.view!=='favorites'||h.favorite).filter(h=>!f.q||[h.name,h.address,h.station,h.memo,h.userMemo].some(v=>String(v||'').toLowerCase().includes(f.q.toLowerCase()))).filter(h=>{
+  if(f.view==='history')return true;
   if(f.budget){const p=number(h.price),fees=number(h.fees),limit=Number(f.budget);if(p==null){if(!f.unknown)return false;}else if(p>limit||(fees!=null&&p+fees>limit)||fees==null&&!f.unknown)return false;}
   if(f.walk){const walk=number(h.walk);if(walk==null?!f.unknown:walk>Number(f.walk))return false;}
   if(f.rooms){const n=parseInt(h.rooms,10);if(!n?!f.unknown:n<Number(f.rooms))return false;}
@@ -94,14 +95,14 @@ export function base64Decode(s){return new TextDecoder().decode(Uint8Array.from(
 export function httpError(status){return Object.assign(Error(status===401?'認証期限切れです。設定からトークンを更新してください。':status===403?'GitHubが操作を拒否しました。書き込み権限またはAPIの利用上限を確認してください。':status===404?'保存先が見つかりません。トークンの対象リポジトリを確認してください。':`通信エラー（HTTP ${status}）`),{status});}
 export class GitHubStore{
  constructor(token,fetcher=(...args)=>globalThis.fetch(...args)){this.token=token;this.fetcher=fetcher;}
- async request(method,body){const r=await this.fetcher(API+(method==='GET'?'?ref=main&t='+Date.now():''),{method,headers:{Authorization:'Bearer '+this.token,Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28',...(body?{'Content-Type':'application/json'}:{})},cache:'no-store',...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(25000)});if(!r.ok)throw httpError(r.status);return r.json();}
- async read(){const file=await this.request('GET');return {data:parseData(JSON.parse(base64Decode(file.content))),sha:file.sha};}
+ async request(method,body,resource=API){const r=await this.fetcher(resource+(method==='GET'?(resource===API?'?ref=main&t=':'?t=')+Date.now():''),{method,headers:{Authorization:'Bearer '+this.token,Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28',...(body?{'Content-Type':'application/json'}:{})},cache:'no-store',...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(25000)});if(!r.ok)throw httpError(r.status);return r.json();}
+ async read(){const file=await this.request('GET');let content=file.content;if(!content||file.encoding==='none'){if(!/^[0-9a-f]{40}$/i.test(file.sha||''))throw Error('保存ファイルの識別情報を取得できませんでした。');const blob=await this.request('GET',undefined,API.replace('/contents/data/listings.json','/git/blobs/'+file.sha));content=blob.content;if(!content)throw Error('保存ファイル本文を取得できませんでした。再同期してください。');}return {data:parseData(JSON.parse(base64Decode(content))),sha:file.sha};}
  async verifyWrite(){
   const probe=globalThis.crypto.randomUUID();
   for(let attempt=0;attempt<3;attempt++){
    const {data,sha}=await this.read();
    const next={...data,connectionProbe:{id:probe,checkedAt:now(),version:VERSION}};
-   try{await this.request('PUT',{message:'Verify app read/write connection',branch:'main',sha,content:base64Encode(JSON.stringify(next,null,2)+'\n')});}
+   try{await this.request('PUT',{message:'Verify app read/write connection',branch:'main',sha,content:base64Encode(JSON.stringify(next)+'\n')});}
    catch(e){if(e.status===409&&attempt<2)continue;throw e;}
    const confirmed=await this.read();
    if(confirmed.data.connectionProbe?.id!==probe)throw Error('保存後の再読込で確認できませんでした。物件情報は削除していません。');
@@ -110,8 +111,10 @@ export class GitHubStore{
  }
  async write(pending){for(let attempt=0;attempt<3;attempt++){
   const {data,sha}=await this.read(),next=mergePending(data,pending);
-  try{await this.request('PUT',{message:'Save home edits from app',branch:'main',sha,content:base64Encode(JSON.stringify(next,null,2)+'\n')});return next;}
+  try{await this.request('PUT',{message:'Save home edits from app',branch:'main',sha,content:base64Encode(JSON.stringify(next)+'\n')});return next;}
   catch(e){if(e.status!==409||attempt===2)throw e;}
  }}
 }
+
+
 
