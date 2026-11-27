@@ -79,17 +79,17 @@ function renderListResults(arr,pages){
 function refreshListResults(){
  const results=$('listResults');if(!results)return;
  const {arr,pages}=listMatches();results.innerHTML=renderListResults(arr,pages);
- const count=$('resultCount');if(count)count.textContent=`表示 ${arr.length}件 / 全登録 ${state.homes.length}件。借地権・成約済みは候補から除外し、履歴に保存。`;
+ const count=$('resultCount');if(count)count.textContent=`表示 ${arr.length}件 / 全登録 ${state.homes.length}件。販売・1階LDK確認済みのみ候補に表示。確認待ち・条件外は履歴に保存。`;
 }
 function renderList(){
  const {arr,pages}=listMatches(),sort=listMode==='new'?'new':filters.sort;
  const candidates=state.homes.filter(h=>!inHistory(h)).length;
- const title={rank:'物件ランキング',new:'新しく登録した物件',favorites:'お気に入り',history:'成約・見送り・元資料'}[listMode]||'物件一覧';
+ const title={rank:'物件ランキング',new:'新しく登録した物件',favorites:'お気に入り',history:'確認待ち・成約・履歴'}[listMode]||'物件一覧';
  return `<div class="stats"><div class="stat"><b>${state.homes.length}</b><span>全登録物件</span></div><div class="stat"><b>${candidates}</b><span>検討候補</span></div><div class="stat"><b>${state.homes.filter(h=>h.favorite&&!inHistory(h)).length}</b><span>お気に入り</span></div></div>
  <div class="row viewtitle"><h2>${title}</h2>${button('add','＋ 物件登録','','')}</div>
- <div class="panel"><label class="tiny" for="search">駅・住所・物件名で探す</label><input id="search" class="search" type="text" inputmode="text" autocomplete="off" placeholder="例：柿生・町田・高根" value="${esc(filters.q)}"><details id="filterDetails"><summary>絞り込み・並び順 ${filters.budget||filters.walk||filters.rooms||filters.livingFloor?'（指定あり）':''}</summary><div class="filter-grid">${filterSelect('budget','諸費用込み総額',[['','指定なし'],['4000','4,000万円'],['4500','4,500万円']])}${filterSelect('walk','駅徒歩',[['','指定なし'],['10','10分以内'],['15','15分以内'],['20','20分以内']])}${filterSelect('rooms','間取り',[['','指定なし'],['3','3LDK以上'],['4','4LDK以上']])}${filterSelect('livingFloor','LDKの階',[['','指定なし'],['1','1階LDK'],['2','2階LDK'],['3','3階以上LDK']])}</div><label class="check"><input type="checkbox" id="includeUnknown" ${filters.unknown?'checked':''}>未確認項目がある物件も表示（LDK階未確認は仮候補）</label><label class="field">並び順<select id="sortSelect">${options([['score','暫定点順'],['new','新着順'],['price','価格が安い順'],['coverage','調査が進んだ順']],sort)}</select></label><div class="actions">${button('clear-filter','絞り込み解除')}${button('history','成約・見送り・元資料を表示')}</div></details><p class="tiny" id="resultCount">表示 ${arr.length}件 / 全登録 ${state.homes.length}件。借地権・成約済みは候補から除外し、履歴に保存。</p></div>
+ <div class="panel"><label class="tiny" for="search">駅・住所・物件名で探す</label><input id="search" class="search" type="text" inputmode="text" autocomplete="off" placeholder="例：柿生・町田・高根" value="${esc(filters.q)}"><details id="filterDetails"><summary>絞り込み・並び順 ${filters.budget||filters.walk||filters.rooms||filters.livingFloor?'（指定あり）':''}</summary><div class="filter-grid">${filterSelect('budget','諸費用込み総額',[['','指定なし'],['4000','4,000万円'],['4500','4,500万円']])}${filterSelect('walk','駅徒歩',[['','指定なし'],['10','10分以内'],['15','15分以内'],['20','20分以内']])}${filterSelect('rooms','間取り',[['','指定なし'],['3','3LDK以上'],['4','4LDK以上']])}${filterSelect('livingFloor','LDKの階',[['','指定なし'],['1','1階LDK'],['2','2階LDK'],['3','3階以上LDK']])}</div><label class="check"><input type="checkbox" id="includeUnknown" ${filters.unknown?'checked':''}>諸費用など未確認項目がある物件も表示（販売・1階LDK確認は必須）</label><label class="field">並び順<select id="sortSelect">${options([['score','暫定点順'],['new','新着順'],['price','価格が安い順'],['coverage','調査が進んだ順']],sort)}</select></label><div class="actions">${button('clear-filter','絞り込み解除')}${button('history','確認待ち・成約・履歴を表示')}</div></details><p class="tiny" id="resultCount">表示 ${arr.length}件 / 全登録 ${state.homes.length}件。借地権・成約済みは候補から除外し、履歴に保存。</p></div>
  <div id="listResults">${renderListResults(arr,pages)}</div>
- <p class="tiny">購入条件：諸費用込み4,500万円以下・徒歩20分以内・1階LDK。LDK階未確認の物件は条件適合が未判定の仮候補です。間取り図などの根拠で1階と確認してください。諸費用不明も仮候補です。点数は暫定評価です。</p>`;
+ <p class="tiny">購入条件：諸費用込み4,500万円以下・徒歩20分以内・1階LDK。販売・LDK階の未確認物件は履歴で確認できます。諸費用不明も仮候補です。点数は暫定評価です。</p>`;
 }
 function options(items,current){return items.map(([v,t])=>`<option value="${esc(v)}" ${String(v)===String(current)?'selected':''}>${esc(t)}</option>`).join('');}
 function filterSelect(id,title,items){return `<label>${title}<select data-filter="${id}">${options(items,filters[id])}</select></label>`;}
@@ -127,7 +127,7 @@ function bindForm(){$('homeForm').addEventListener('submit',e=>{
   if(!String(name||'').trim())throw Error('物件名を入力してください。');
   for(const k of ['price','walk','fees','landArea','buildingArea'])if(changes[k]!==undefined&&changes[k]!==''&&(number(changes[k])==null||Number(changes[k])<0))throw Error('価格・徒歩・面積は0以上の数字で入力してください。');
   for(const k of ['url','hazardUrl','researchUrl'])if(changes[k]&&!validUrl(changes[k]))throw Error('URLはhttpまたはhttpsから入力してください。');
-  const url=changes.url??editBase.url;if(url&&state.homes.some(x=>x.id!==id&&canonicalUrl(x.url)===canonicalUrl(url)))throw Error('このURLは登録済みです。同じ分譲地の別号棟なら、URLを空欄にして物件名に号棟を入れて登録してください。');
+  const url=changes.url??editBase.url;if(url&&canonicalUrl(url)!==canonicalUrl(editBase.url)&&state.homes.some(x=>x.id!==id&&canonicalUrl(x.url)===canonicalUrl(url)))throw Error('このURLは登録済みです。同じ分譲地の別号棟なら、URLを空欄にして物件名に号棟を入れて登録してください。');
   // Compare against the form's opening state so background edits cannot silently win.
   if(existing)for(const k of Object.keys(changes))if(!same(existing[k]??'',editBase[k]??'')&&!same(existing[k],changes[k]))throw Error('編集中にデータが変わりました。一度戻って最新情報を確認してください。');
   if(!existing)Object.assign(changes,{created:now(),source:'manual',name});queuePatch(id,changes);go('detail',id);notify('端末に保存しました。GitHubへ同期します。');sync();
@@ -161,4 +161,5 @@ window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installProm
 if('serviceWorker' in navigator){navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});}
 $('version').textContent='v'+VERSION;
 render();if(localStorage.getItem(TOKEN_KEY)){showPrivate();sync();}
+
 
